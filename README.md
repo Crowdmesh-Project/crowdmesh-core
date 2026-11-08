@@ -1,78 +1,90 @@
-# AviaMesh ✈️📡
+# CrowdMesh Core
 
-> Deterministyczny symulator oraz osadzalny silnik protokołu sieci mesh (P2P ad-hoc) bez infrastruktury, zoptymalizowany dla kabin samolotowych i gęstych tłumów.
+Deterministic simulation engine and embeddable, zero-I/O protocol core for infrastructure-less, connectionless ad-hoc mesh networking in high-density environments.
 
-[![Go Report Card](https://goreportcard.com/badge/avia-mesh)](https://goreportcard.com/report/avia-mesh)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 ---
 
-## 🎯 Cel Projektu
+## Project Overview
 
-AviaMesh to projekt badawczo-inżynieryjny, którego celem jest:
-1. Zbudowanie lekkiego silnika protokołu komunikacji w tłumie (np. kabina pasażerska samolotu bez dostępu do Internetu), opartego o bezpołączeniowe rozgłoszenia radiowe (BLE Advertising / Wi-Fi Aware).
-2. Zmierzenie kosztów transmisji, zużycia pasma, opóźnień oraz niezawodności w **deterministycznym symulatorze fizyki kabiny**.
-3. Utrzymanie rdzenia w architekturze **czystego automatu stanowego (Zero I/O)**, gotowego do bezpośredniego osadzenia w aplikacji mobilnej na Androida i iOS.
+CrowdMesh is an applied research and engineering project designed to address communication in dense, infrastructure-deprived environments (aircraft cabins, stadiums, off-grid locations) using connectionless broadcasts (Bluetooth Low Energy Advertising, Wi-Fi Aware).
 
-Pełny opis koncepcji, modelu propagacji i założeń projektowych znajduje się w dokumencie:
-👉 [Dokumentacja Koncepcyjna (docs/concept.md)](docs/concept.md)
+Key architectural goals:
+1. **Zero-I/O State Machine:** The core protocol engine does not touch sockets, system clocks (`time.Now()`), or persistent storage. It consumes discrete incoming events (`Event`) and produces a list of deterministic actions (`Action`).
+2. **Deterministic Discrete-Event Simulation:** The exact same configuration and seed yield bit-for-bit identical network metrics and execution traces.
+3. **Embeddable in Mobile Platforms:** The same core protocol logic can be compiled via `gomobile` or C-ABI bindings directly into Android (Kotlin) and iOS (Swift) applications.
+4. **Broadcast Storm Mitigation:** Counter-based suppression (inspired by RFC 6206 / Trickle) and probabilistic gossip to reduce redundant transmissions by 60-80% compared to baseline flooding.
+5. **Eventual Consistency without Central Authority:** Messages are stored in a Grow-only Set (G-Set) CRDT ordered by Hybrid Logical Clocks (HLC) and synchronized via periodic anti-entropy digests.
+
+Detailed conceptual documentation and mathematical propagation models are available in [docs/concept.md](docs/concept.md).
 
 ---
 
-## 🏗️ Architektura Projektu
-
-Projekt opiera się na standardowym układzie Go (*Go Standard Layout*):
+## Repository Structure
 
 ```
-avia-mesh/
+crowdmesh-core/
 ├── cmd/
-│   ├── avia-sim/          # CLI do symulacji wsadowych (badanie hipotez E1–E7)
-│   └── avia-tui/          # Interaktywna wizualizacja kabiny w terminalu
+│   ├── crowdmesh-sim/     # CLI for batch parameter sweeps and Monte Carlo runs
+│   └── crowdmesh-tui/     # Terminal user interface for step-by-step propagation playback
 ├── internal/
-│   ├── core/              # Silnik protokołu (Zero I/O): automat, ramka, forwarding, G-Set
-│   │   ├── engine/        # Pętla zdarzeń węzła: Node.Handle(Event) -> []Action
-│   │   ├── frame/         # Parser i serializator 15-bajtowej ramki binarnej
-│   │   ├── strategy/      # Strategie forwardingu (Flooding, Gossip, Trickle)
-│   │   ├── store/         # Magazyn CRDT (G-Set), bufor LRU, anti-entropy
-│   │   └── hlc/           # Hybrydowy zegar logiczny (HLC)
-│   ├── sim/               # Symulator fizyczny
-│   │   ├── cabin/         # Model topologii foteli (30 rzędów x 6 miejsc)
-│   │   ├── radio/         # Tłumienie fal (Log-distance, shadowing, ciała pasażerów, SINR)
-│   │   ├── mobility/      # Generator ruchu wędrowca w alejce i awarii węzłów
-│   │   └── runner/        # Deterministyczna dyskretna kolejka zdarzeń czasu wirtualnego
-│   └── crypto/            # Prymitywy kryptograficzne (X25519, ChaCha20-Poly1305, HMAC)
+│   ├── core/              # Zero-I/O protocol engine
+│   │   ├── engine/        # Node event loop: Handle(virtualTime, Event) -> []Action
+│   │   ├── frame/         # 15-byte binary frame parser, serializer, and validators
+│   │   ├── strategy/      # Forwarding strategies (Flooding, Gossip, Counter-based Trickle)
+│   │   ├── store/         # G-Set CRDT storage, LRU deduplication, anti-entropy digests
+│   │   └── hlc/           # Hybrid Logical Clock implementation
+│   ├── sim/               # Discrete-event simulation environment
+│   │   ├── cabin/         # Physical node topology and spatial layouts
+│   │   ├── radio/         # Log-distance path loss, passenger attenuation, SINR collision model
+│   │   ├── mobility/      # Store-and-forward courier model (e.g., passenger moving along aisle)
+│   │   └── runner/        # Priority queue virtual time scheduler (container/heap)
+│   └── crypto/            # Cryptographic primitives (X25519, ChaCha20-Poly1305, rotating HMAC tag)
 ├── pkg/
-│   └── aviamesh/          # Publiczne API rdzenia
-├── experiments/           # Konfiguracje eksperymentów (YAML) i skrypty analizy danych
-└── docs/                  # Specyfikacja protokołu, model zagrożeń, ADR, wyniki
+│   └── crowdmesh/         # Public stable API for mobile embedding
+├── experiments/           # Configuration files and evaluation scripts
+└── docs/                  # Architectural decisions, threat model, protocol specification
 ```
 
 ---
 
-## ⚡ Szybki Start
+## Getting Started
 
-Wymagania: Go 1.22+.
+### Prerequisites
 
-### Testy jednostkowe i fuzzing
+* Go 1.22 or higher
+
+### Running Unit Tests
+
 ```bash
-# Uruchomienie wszystkich testów
+# Run all unit tests
 go test -v ./...
 
-# Uruchomienie fuzzingu parsera ramek binarnych
-go test -fuzz=FuzzParseFrame ./internal/core/frame
+# Run tests in the core frame package
+go test -v ./internal/core/frame
+```
+
+### Running the Fuzzing Engine
+
+The binary frame parser uses native Go fuzzing to verify robustness against arbitrary malformed packets:
+
+```bash
+go test -fuzz=FuzzParseFrame -fuzztime=10s ./internal/core/frame
 ```
 
 ---
 
-## 📊 Plan Eksperymentów (E1–E5)
+## Experimental Agenda
 
-- **E1:** Zachowanie i kolizje czystego floodingu przy 180 węzłach w kabinie.
-- **E2:** Oszczędność nadawań dzięki tłumieniu licznikowemu (Trickle) w relacji do Packet Delivery Ratio.
-- **E3:** Granica perkolacji sieci w zależności od adopcji aplikacji (10%–100%).
-- **E4:** Czas konwergencji po rozcięciu sieci dzięki fizycznemu nośnikowi (wędrowiec w alejce).
-- **E5:** Koszt pasmowy i energetyczny okresowego beaconingu.
+* **E1:** Baseline broadcast storm characterization of naive flooding under dense topology (180 nodes).
+* **E2:** Transmission overhead reduction using counter-based suppression (k=1..3) vs Packet Delivery Ratio (PDR).
+* **E3:** Network percolation threshold as a function of application adoption density (10% to 100%).
+* **E4:** Convergence latency across network partitions assisted by physical couriers (Store-and-Forward / DTN).
+* **E5:** Channel utilization and energy cost of periodic beaconing intervals (0.5s vs 2.0s).
 
 ---
 
-## 📜 Licencja
-MIT
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
