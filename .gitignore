@@ -1,0 +1,22 @@
+# Secrets & Environment variables
+.env
+.env.*
+!.env.example
+
+# Binaries
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test artifacts & coverage
+*.out
+*.test
+coverage.txt
+
+# IDE
+.idea/
+.vscode/
+*.swp
